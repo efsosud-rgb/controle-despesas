@@ -1,11 +1,22 @@
 {
   "name": "controle-despesas",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "App de controle de despesas pessoais (PWA, dados só no aparelho).",
+  "homepage": "https://efsosud-rgb.github.io/controle-despesas/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/efsosud-rgb/controle-despesas.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node --test \"testes/*.test.js\"",
     "sw": "node ferramentas/atualizar-sw.mjs",
-    "sw:conferir": "node ferramentas/atualizar-sw.mjs --conferir"
+    "sw:conferir": "node ferramentas/atualizar-sw.mjs --conferir",
+    "servir": "node ferramentas/servir.mjs",
+    "site": "node ferramentas/montar-site.mjs _site"
   }
 }

@@ -8,7 +8,7 @@
  */
 
 // <gerado por ferramentas/atualizar-sw.mjs: não edite à mão>
-const VERSAO = 'e0d1fe8201d1';
+const VERSAO = '24b161ae03ac';
 const ARQUIVOS = [
   "./",
   "./css/app.css",
@@ -47,7 +47,14 @@ const ARQUIVOS = [
 ];
 // </gerado>
 
-const CACHE = `controle-despesas-${VERSAO}`;
+/*
+ * Vários sites do GitHub Pages dividem o mesmo endereço (efsosud-rgb.github.io), e o cache do navegador é do
+ * endereço inteiro. Por isso o nome do cache leva a pasta onde o app está publicado, e a limpeza de versões antigas
+ * só apaga caches desta mesma pasta.
+ */
+const PASTA = new URL('./', self.location.href).pathname;
+const PREFIXO = `controle-despesas:${PASTA}:`;
+const CACHE = `${PREFIXO}${VERSAO}`;
 
 self.addEventListener('install', (evento) => {
   /* cache: 'reload' busca direto no servidor, sem pegar cópia antiga guardada pelo navegador. */
@@ -57,7 +64,7 @@ self.addEventListener('install', (evento) => {
 self.addEventListener('activate', (evento) => {
   evento.waitUntil((async () => {
     const nomes = await caches.keys();
-    await Promise.all(nomes.filter((n) => n.startsWith('controle-despesas-') && n !== CACHE).map((n) => caches.delete(n)));
+    await Promise.all(nomes.filter((n) => n.startsWith(PREFIXO) && n !== CACHE).map((n) => caches.delete(n)));
     await self.clients.claim();
   })());
 });
@@ -75,9 +82,8 @@ self.addEventListener('fetch', (evento) => {
   if (pedido.mode === 'navigate') {
     evento.respondWith((async () => {
       const cache = await caches.open(CACHE);
-      const pagina = await cache.match('./index.html');
-      if (pagina) return pagina;
-      return fetch(pedido);
+      const guardado = (await cache.match(pedido, { ignoreSearch: true })) || (await cache.match('./index.html'));
+      return guardado || fetch(pedido);
     })());
     return;
   }

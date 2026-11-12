@@ -1,51 +1,66 @@
 /**
- * Atualiza a lista de arquivos e a VERSAO do service worker (sw.js) a partir do conteúdo da pasta do app.
+ * Atualiza a lista de arquivos e a VERSAO do service worker (sw.js).
  *   node ferramentas/atualizar-sw.mjs             → reescreve o bloco gerado do sw.js
  *   node ferramentas/atualizar-sw.mjs --conferir  → só confere; sai com erro se estiver desatualizado
+ *
+ * Só vai para o ar (e para o cache sem internet) o que está em PUBLICADOS. Documentação, testes e ferramentas
+ * ficam no repositório mas não são publicados.
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const RAIZ = fileURLToPath(new URL('..', import.meta.url));
-/* Fora do cache: o próprio service worker, documentação, testes e ferramentas de desenvolvimento. */
-const IGNORAR_NA_RAIZ = new Set(['sw.js', 'README.md', 'package.json', 'testes', 'ferramentas', 'node_modules']);
-const IGNORAR_SEMPRE = new Set(['.DS_Store', 'Thumbs.db']);
+export const RAIZ = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]$/, '');
 
-function listar(pasta) {
+/** Arquivos e pastas que formam o app publicado. */
+export const PUBLICADOS = ['index.html', 'manifest.webmanifest', 'sw.js', 'css', 'fontes', 'icones', 'js', 'vendor'];
+
+const IGNORAR = new Set(['.DS_Store', 'Thumbs.db']);
+const MARCADORES = /\/\/ <gerado por ferramentas\/atualizar-sw\.mjs: não edite à mão>[\s\S]*?\/\/ <\/gerado>/;
+
+/** @param {string} caminho */
+function listarDentro(caminho) {
+  if (statSync(caminho).isFile()) return [relative(RAIZ, caminho).split(sep).join('/')];
   const encontrados = [];
-  for (const nome of readdirSync(pasta).sort()) {
-    if (IGNORAR_SEMPRE.has(nome) || nome.startsWith('.')) continue;
-    const caminho = join(pasta, nome);
-    if (pasta === RAIZ.replace(/[\\/]$/, '') || pasta === RAIZ) {
-      if (IGNORAR_NA_RAIZ.has(nome)) continue;
-    }
-    if (statSync(caminho).isDirectory()) encontrados.push(...listar(caminho));
-    else encontrados.push(relative(RAIZ, caminho).split(sep).join('/'));
+  for (const nome of readdirSync(caminho).sort()) {
+    if (IGNORAR.has(nome) || nome.startsWith('.')) continue;
+    encontrados.push(...listarDentro(join(caminho, nome)));
   }
   return encontrados;
 }
 
+/** Todos os arquivos publicados, em caminhos relativos com "/", em ordem. */
+export function listarPublicados() {
+  const arquivos = [];
+  for (const item of PUBLICADOS) {
+    const caminho = join(RAIZ, item);
+    if (!existsSync(caminho)) throw new Error(`Item publicado não encontrado: ${item}`);
+    arquivos.push(...listarDentro(caminho));
+  }
+  return [...new Set(arquivos)].sort();
+}
+
 export function blocoGerado() {
-  const arquivos = listar(RAIZ.replace(/[\\/]$/, '')).sort();
+  const publicados = listarPublicados();
   const hash = createHash('sha256');
-  for (const arquivo of arquivos) {
+  for (const arquivo of publicados) {
+    let conteudo = readFileSync(join(RAIZ, arquivo));
+    /* O próprio sw.js entra na versão sem o bloco gerado (que contém a versão). */
+    if (arquivo === 'sw.js') conteudo = Buffer.from(conteudo.toString('utf8').replace(MARCADORES, ''));
     hash.update(arquivo);
     hash.update('\0');
-    hash.update(readFileSync(join(RAIZ, arquivo)));
+    hash.update(conteudo);
   }
   const versao = hash.digest('hex').slice(0, 12);
-  const lista = ['./', ...arquivos.map((a) => `./${a}`)];
+  const lista = ['./', ...publicados.filter((a) => a !== 'sw.js').map((a) => `./${a}`)];
   return {
     versao,
     quantidade: lista.length,
     texto: `// <gerado por ferramentas/atualizar-sw.mjs: não edite à mão>\nconst VERSAO = '${versao}';\nconst ARQUIVOS = ${JSON.stringify(lista, null, 2)};\n// </gerado>`,
   };
 }
-
-const MARCADORES = /\/\/ <gerado por ferramentas\/atualizar-sw\.mjs: não edite à mão>[\s\S]*?\/\/ <\/gerado>/;
 
 export function swAtualizado() {
   const caminho = join(RAIZ, 'sw.js');
